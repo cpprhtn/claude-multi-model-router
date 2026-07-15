@@ -4,28 +4,34 @@
 route.py — OpenRouter 라우터 (독립 실행, 클로드 토큰 0) + cn_run.py와 공유하는 모델 상태
 
 역할:
-  1) 질문 난이도를 규칙 기반(휴리스틱)으로 분류: free / sonnet / opus
-  2) free 티어 -> OpenRouter 모델 직접 호출 (429/오류 시 짧은 재시도)
+  1) 호출자(Claude)가 SKILL.md 티어 판정표에서 이미 정한 난이도를 --tier로 직접 받는 것이
+     기본 경로다. --tier 없이 호출되면(사람이 CLI로 치는 경우 등) 규칙 기반 classify()로
+     free/sonnet/opus를 폴백 분류한다 — Claude의 판정과 내부 classify()가 서로 다른 결론을
+     내려 충돌하는 것을 막기 위해 --tier가 항상 우선한다.
+  2) free/delegate 대상 -> OpenRouter 모델 직접 호출 (429/오류 시 짧은 재시도)
      실제로 부를 모델은 cn_run.py와 완전히 같은 상태(sticky/autoscale, cn_models.json)를
      따른다 — "OpenRouter 위임"은 route.py/cn_run.py 공통 스위치이므로, 사용자가
      유료 모델에 sticky 고정했거나 오토스케일을 켰다면 route.py도 그걸 그대로 반영해야
-     한다(이전엔 이 상태를 무시하고 항상 openrouter/free만 불렀음 — 버그였음).
-  3) sonnet/opus 티어 -> 호출하지 않고 ESCALATE 마커만 출력 (클로드가 처리)
+     한다.
+  3) --tier 미지정 + classify() 결과가 sonnet/opus -> 호출하지 않고 ESCALATE 마커만 출력
+     (클로드가 처리)
 
 사용:
   python route.py "질문 내용"
-  python route.py --json "질문 내용"       # 결과를 JSON으로
-  python route.py --tier-only "질문"       # 분류만 (호출 없음, 키 불필요)
-  python route.py --tier free "질문"       # 난이도 분류 건너뛰고 티어 강제
-  python route.py --out FILE "질문"        # 응답을 stdout 대신 파일에 저장
-                                           #   (클로드가 내용 재생산 없이 적용/검토)
-  echo "질문" | python route.py            # stdin 입력
+  python route.py --json "질문 내용"              # 결과를 JSON으로
+  python route.py --tier-only "질문"              # 분류만 (호출 없음, 키 불필요)
+  python route.py --tier mid "질문"                # Claude가 이미 정한 ladder 티어로 직접 위임
+                                                    #   (trivial|light|mid|reason, classify() 건너뜀)
+  python route.py --out FILE "질문"                # 응답을 stdout 대신 파일에 저장
+                                                    #   (클로드가 내용 재생산 없이 적용/검토)
+  echo "질문" | python route.py                    # stdin 입력
 
-모델 선택(= "free 티어 실행"의 실제 호출 대상): sticky(cn_active_model.txt) > autoscale
-  on이면 난이도별 자동 선택(cn_models.json의 autoscale ladder) > 없으면 free_slug(기본
-  openrouter/free). sticky/autoscale on은 cn_run.py --set-model / --autoscale on으로
-  설정하며, 상태 파일은 이 스크립트와 같은 폴더에 있다. 유료 모델이 선택되면 실제
-  크레딧이 차감되므로 호출 전 stderr에 [유료 호출] 마커를 출력한다.
+모델 선택(= 실제 호출 대상): sticky > --tier(ladder 직접 지정) > autoscale on이면 난이도별
+  자동 선택(classify() 폴백) > 없으면 free_slug(기본 openrouter/free). sticky/autoscale on은
+  cn_run.py --set-model / --autoscale on으로 설정하며, 상태는 프로젝트 루트
+  `.claude/.cmr-state.json`에 저장된다(스킬 폴더 밖 — degit 재설치로 유실되지 않고, git에는
+  커밋하지 않도록 .gitignore에 포함). 유료 모델이 선택되면 실제 크레딧이 차감되므로 호출 전
+  stderr에 [유료 호출] 마커를 출력한다.
 
 OpenRouter 위임 자체는 opt-in이다: 이 스크립트를 직접 호출하면(사람이 CLI로 치거나
   Claude가 호출하기로 결정한 경우) 항상 실행되고 위 우선순위대로 모델을 호출한다 —
@@ -57,14 +63,22 @@ if hasattr(sys.stdout, "reconfigure"):
 HERE = os.path.dirname(os.path.abspath(__file__))
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 ROSTER_FILE = os.path.join(HERE, "cn_models.json")
-ACTIVE_MODEL_FILE = os.path.join(HERE, "cn_active_model.txt")
-AUTOSCALE_FILE = os.path.join(HERE, "cn_autoscale.txt")
+LADDER_TIERS = ("trivial", "light", "mid", "reason")
+
+# 상태 파일(sticky/autoscale)은 스킬 폴더 밖, 프로젝트 루트(cwd — .env와 같은 기준)에 둔다.
+# 스킬 폴더 안에 두면 degit 재설치 시 유실되고, 실수로 git에 개인 상태가 커밋될 위험이 있다.
+STATE_DIR = os.path.join(os.getcwd(), ".claude")
+STATE_FILE = os.path.join(STATE_DIR, ".cmr-state.json")
+# v1 레거시 위치(스킬 폴더 내부) — 있으면 1회 자동 마이그레이션 후 제거.
+_LEGACY_ACTIVE_MODEL_FILE = os.path.join(HERE, "cn_active_model.txt")
+_LEGACY_AUTOSCALE_FILE = os.path.join(HERE, "cn_autoscale.txt")
 
 # ─────────────────────────────────────────────────────────────
 # 설정 로드
 # ─────────────────────────────────────────────────────────────
 def load_models():
-    with open(os.path.join(HERE, "models.json"), "r", encoding="utf-8") as f:
+    # ESCALATE 안내 라벨 전용(호출 대상 로스터가 아님 — 그건 cn_models.json).
+    with open(os.path.join(HERE, "escalate_labels.json"), "r", encoding="utf-8") as f:
         return json.load(f)
 
 # ─────────────────────────────────────────────────────────────
@@ -76,31 +90,63 @@ def load_roster():
     with open(ROSTER_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def read_sticky():
-    if os.path.exists(ACTIVE_MODEL_FILE):
-        with open(ACTIVE_MODEL_FILE, "r", encoding="utf-8") as f:
+def _migrate_legacy_state():
+    """v1(스킬 폴더 내부 txt 2개) -> v2(프로젝트 루트 JSON 1개) 1회 마이그레이션."""
+    if not (os.path.exists(_LEGACY_ACTIVE_MODEL_FILE) or os.path.exists(_LEGACY_AUTOSCALE_FILE)):
+        return None
+    state = {}
+    if os.path.exists(_LEGACY_ACTIVE_MODEL_FILE):
+        with open(_LEGACY_ACTIVE_MODEL_FILE, "r", encoding="utf-8") as f:
             v = f.read().strip()
             if v:
-                return v
-    return None
+                state["sticky"] = v
+    if os.path.exists(_LEGACY_AUTOSCALE_FILE):
+        with open(_LEGACY_AUTOSCALE_FILE, "r", encoding="utf-8") as f:
+            state["autoscale"] = f.read().strip() == "on"
+    _write_state(state)
+    for p in (_LEGACY_ACTIVE_MODEL_FILE, _LEGACY_AUTOSCALE_FILE):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    return state
+
+def _load_state():
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {}
+    migrated = _migrate_legacy_state()
+    return migrated if migrated is not None else {}
+
+def _write_state(state):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False)
+
+def read_sticky():
+    return _load_state().get("sticky") or None
 
 def write_sticky(slug):
-    with open(ACTIVE_MODEL_FILE, "w", encoding="utf-8") as f:
-        f.write(slug + "\n")
+    state = _load_state()
+    state["sticky"] = slug
+    _write_state(state)
 
 def clear_sticky():
-    if os.path.exists(ACTIVE_MODEL_FILE):
-        os.remove(ACTIVE_MODEL_FILE)
+    state = _load_state()
+    if "sticky" in state:
+        del state["sticky"]
+        _write_state(state)
 
 def read_autoscale():
-    if os.path.exists(AUTOSCALE_FILE):
-        with open(AUTOSCALE_FILE, "r", encoding="utf-8") as f:
-            return f.read().strip() == "on"
-    return False
+    return bool(_load_state().get("autoscale", False))
 
 def write_autoscale(on):
-    with open(AUTOSCALE_FILE, "w", encoding="utf-8") as f:
-        f.write("on" if on else "off")
+    state = _load_state()
+    state["autoscale"] = bool(on)
+    _write_state(state)
 
 def resolve(alias_or_slug, roster):
     """반환: (slug, tier, note) — 로스터 alias면 매핑, 아니면 원문을 유료 slug로 취급."""
@@ -212,20 +258,26 @@ def autoscale_pick(prompt_text, roster):
         alias = ladder["trivial"] if is_trivial else ladder["light"]
     return alias, tier, reason
 
-def active_model(prompt_text=None):
+def active_model(prompt_text=None, forced_ladder_tier=None):
     """cn_run.py의 sticky/autoscale 상태를 그대로 따라 실제로 호출할 모델을 정한다:
-    sticky > (autoscale on이면) 난이도별 자동 선택 > free_slug. cn_run.py의 --set-model/
-    --autoscale on/off와 상태 파일을 공유하므로, 사용자가 유료 모델에 고정했거나
-    오토스케일을 켰다면 route.py도 그 결과를 그대로 반영한다.
+    sticky > forced_ladder_tier(Claude가 SKILL.md 표에서 이미 정한 --tier, classify() 건너뜀)
+    > (autoscale on이면) 난이도별 자동 선택(classify() 폴백) > free_slug. cn_run.py의
+    --set-model/--autoscale on/off와 상태 파일을 공유하므로, 사용자가 유료 모델에
+    고정했거나 오토스케일을 켰다면 route.py도 그 결과를 그대로 반영한다.
     반환: (slug, tier, note)"""
     roster = load_roster()
     sticky = read_sticky()
     if sticky:
         return resolve(sticky, roster)
+    if forced_ladder_tier:
+        ladder = roster["autoscale"]
+        alias = ladder[forced_ladder_tier]
+        slug, entry_tier, note = resolve(alias, roster)
+        return slug, entry_tier, f"{note} [명시 지정: {forced_ladder_tier}→{alias}]"
     if prompt_text is not None and read_autoscale():
         alias, tier, reason = autoscale_pick(prompt_text, roster)
         slug, entry_tier, note = resolve(alias, roster)
-        return slug, entry_tier, f"{note} [오토스케일: {tier}→{alias}, 사유: {reason}]"
+        return slug, entry_tier, f"{note} [오토스케일 폴백: {tier}→{alias}, 사유: {reason}]"
     return resolve(roster["free_slug"], roster)
 
 # ─────────────────────────────────────────────────────────────
@@ -266,12 +318,12 @@ def call_model(model, message, api_key, system=None, timeout=90):
     usage = payload.get("usage", {})
     return choice, usage
 
-def run_delegated(text, api_key, system=None):
-    """sticky/autoscale 상태에 따라 실제로 부를 모델을 정하고(active_model()) 호출한다.
-    free_slug가 선택되면 비용 없음, sticky/autoscale이 유료 모델을 골랐으면 실제
+def run_delegated(text, api_key, system=None, forced_ladder_tier=None):
+    """sticky/autoscale/--tier 상태에 따라 실제로 부를 모델을 정하고(active_model()) 호출한다.
+    free_slug가 선택되면 비용 없음, sticky/autoscale/--tier가 유료 모델을 골랐으면 실제
     크레딧이 차감된다 — 호출 전 stderr에 [유료 호출]/[무료 호출] 마커를 남긴다."""
     category = pick_free_category(text)  # 결과 라벨링용(모델 선택과 무관)
-    slug, tier, note = active_model(prompt_text=text)
+    slug, tier, note = active_model(prompt_text=text, forced_ladder_tier=forced_ladder_tier)
     if tier == "paid":
         print(f"[유료 호출] model={slug} note={note!r} — OpenRouter 크레딧이 차감됩니다.",
               file=sys.stderr)
@@ -305,10 +357,15 @@ def run_delegated(text, api_key, system=None):
         except Exception as e:
             errors.append({"model": slug, "error": str(e)[:200]})
             break
+    # free 티어가 429로 소진되면(quota exhaustion) 호출자가 재시도 없이 Sonnet 서브에이전트로
+    # 바로 넘어갈 수 있게 신호를 준다 — SKILL.md/cn.md의 "free quota 소진 폴백" 규칙.
+    suggestion = None
+    if tier == "free" and any(e.get("code") == 429 for e in errors):
+        suggestion = "free quota 소진으로 보임(429 반복) — Sonnet 서브에이전트로 직접 처리 권장"
     return {
         "tier": tier, "category": category, "model_used": None, "note": note,
         "answer": None, "error": f"모델 호출 실패: {slug}",
-        "fallbacks_tried": errors,
+        "fallbacks_tried": errors, "suggestion": suggestion,
     }
 
 # ─────────────────────────────────────────────────────────────
@@ -317,7 +374,7 @@ def run_delegated(text, api_key, system=None):
 def main():
     args = sys.argv[1:]
     as_json = False
-    forced_tier = None
+    forced_ladder_tier = None  # Claude가 SKILL.md 표에서 이미 정한 --tier (classify() 건너뜀)
     tier_only = False
     out_file = None
     rest = []
@@ -328,15 +385,16 @@ def main():
         elif args[i] == "--tier-only":
             tier_only = True
         elif args[i] == "--tier" and i + 1 < len(args):
-            forced_tier = args[i + 1]; i += 1
+            forced_ladder_tier = args[i + 1]; i += 1
         elif args[i] == "--out" and i + 1 < len(args):
             out_file = args[i + 1]; i += 1
         else:
             rest.append(args[i])
         i += 1
 
-    if forced_tier and forced_tier not in ("free", "sonnet", "opus"):
-        print(f"[오류] --tier 값은 free/sonnet/opus 중 하나: '{forced_tier}'", file=sys.stderr)
+    if forced_ladder_tier and forced_ladder_tier not in LADDER_TIERS:
+        print(f"[오류] --tier 값은 {'/'.join(LADDER_TIERS)} 중 하나(--tier-only는 별개 플래그): "
+              f"'{forced_ladder_tier}'", file=sys.stderr)
         sys.exit(2)
 
     text = " ".join(rest).strip()
@@ -348,33 +406,37 @@ def main():
 
     models = load_models()
 
-    if forced_tier:
-        tier, reason = forced_tier, "사용자 강제 지정"
-    else:
-        tier, reason = classify(text)
-
-    # 분류만 하고 종료 (호출 없음, API 키 불필요, 사용량 0)
+    # --tier-only: classify() 분류 힌트만 보고 종료 (호출 없음, API 키 불필요, 사용량 0).
+    # --tier(ladder)와는 별개 경로 — 이건 항상 classify()로 재분류해서 보여준다.
     if tier_only:
+        tier, reason = classify(text)
         if as_json:
             print(json.dumps({"tier": tier, "reason": reason}, ensure_ascii=False, indent=2))
         else:
             print(f"tier={tier}  ({reason})")
         return
 
-    # sonnet/opus 티어는 호출하지 않고 클로드에게 넘김
-    if tier in ("sonnet", "opus"):
-        result = {
-            "tier": tier, "action": "ESCALATE",
-            "target_model": models[tier], "reason": reason,
-            "message": text,
-            "note": "이 작업은 클로드가 처리해야 합니다. 무료 모델 호출 안 함.",
-        }
-        if as_json:
-            print(json.dumps(result, ensure_ascii=False, indent=2))
-        else:
-            print(f"[ESCALATE → {tier.upper()}] 사유: {reason}")
-            print(f"→ 클로드({models[tier]})가 처리해야 합니다. (무료 모델 미호출)")
-        return
+    # --tier가 명시되면 Claude가 이미 위임하기로 결정한 것 — classify()/ESCALATE 재분류 없이
+    # 바로 지정된 ladder 티어로 위임한다(이원 분류 방지, B-1).
+    if forced_ladder_tier:
+        reason = "Claude가 SKILL.md 티어 판정표에서 이미 분류(명시 지정)"
+        tier = "free"  # ESCALATE 분기를 타지 않고 바로 아래 위임 경로로 진행
+    else:
+        tier, reason = classify(text)
+        # sonnet/opus 티어는 호출하지 않고 클로드에게 넘김 (폴백 경로에서만 발생)
+        if tier in ("sonnet", "opus"):
+            result = {
+                "tier": tier, "action": "ESCALATE",
+                "target_model": models[tier], "reason": reason,
+                "message": text,
+                "note": "이 작업은 클로드가 처리해야 합니다. 무료 모델 호출 안 함.",
+            }
+            if as_json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(f"[ESCALATE → {tier.upper()}] 사유: {reason}")
+                print(f"→ 클로드({models[tier]})가 처리해야 합니다. (무료 모델 미호출)")
+            return
 
     # free 티어 분류 결과 → 실제 호출(위임 실행). 부를 모델 자체는 sticky/autoscale에 따라
     # free일 수도 paid일 수도 있다(run_delegated 참고).
@@ -388,7 +450,7 @@ def main():
             print(f"[오류] {msg}", file=sys.stderr)
         sys.exit(1)
 
-    result = run_delegated(text, api_key)
+    result = run_delegated(text, api_key, forced_ladder_tier=forced_ladder_tier)
     result["classify_reason"] = reason
     cost_tier = result.get("tier")  # "free" 또는 "paid" — 실제로 호출된 모델의 과금 여부
     label = "FREE" if cost_tier == "free" else "PAID"
@@ -420,6 +482,8 @@ def main():
             print(result["answer"])
         else:
             print(f"[실패] {result.get('error')}", file=sys.stderr)
+            if result.get("suggestion"):
+                print(f"[제안] {result['suggestion']}", file=sys.stderr)
             sys.exit(1)
 
 if __name__ == "__main__":
