@@ -1,0 +1,28 @@
+name: Tier classification regression
+
+on:
+  pull_request:
+    paths:
+      - ".claude/skills/claude-multi-model-router/route.py"
+      - ".claude/skills/claude-multi-model-router/cn_run.py"
+      - "tests/tier_cases.json"
+      - "tests/run_tier_cases.py"
+  push:
+    branches: [main]
+    paths:
+      - ".claude/skills/claude-multi-model-router/route.py"
+      - ".claude/skills/claude-multi-model-router/cn_run.py"
+      - "tests/tier_cases.json"
+      - "tests/run_tier_cases.py"
+
+jobs:
+  tier-cases:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      # route.py --tier-only는 API 호출을 하지 않으므로(사용량 0) 키/시크릿이 전혀 필요 없다.
+      - name: Run tier classification regression tests
+        run: python tests/run_tier_cases.py
