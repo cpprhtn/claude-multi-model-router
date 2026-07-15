@@ -1,5 +1,6 @@
 .env
 .claude/settings.local.json
+.claude/.cmr-state.json
 cn_active_model.txt
 cn_autoscale.txt
 _oneoff.config.yaml
