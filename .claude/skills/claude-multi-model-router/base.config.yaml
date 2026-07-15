@@ -1,0 +1,15 @@
+name: Main Config
+version: 1.0.0
+schema: v1
+
+models:
+  - name: OpenRouter Free
+    provider: openrouter
+    model: openrouter/free
+    apiKey: ${{ secrets.OPENROUTER_API_KEY }}
+    roles:
+      - chat
+      - edit
+      - apply
+    capabilities:
+      - tool_use

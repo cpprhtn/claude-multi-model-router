@@ -1,0 +1,5 @@
+{
+  "_comment": "sonnet/opus ESCALATE 라벨 전용(route.py가 호출하지 않음 — 클로드가 처리한다는 안내 메시지에만 쓰임). free 티어의 실제 호출 모델은 더 이상 여기서 정하지 않는다 — route.py의 active_model()이 cn_models.json(sticky/autoscale/free_slug)을 기준으로 결정한다(cn_run.py와 상태 공유).",
+  "sonnet": "claude-sonnet-5",
+  "opus": "claude-opus-4-8"
+}

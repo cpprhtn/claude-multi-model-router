@@ -1,0 +1,82 @@
+{
+  "_comment": "cn_run.py가 참조하는 선택 가능 모델 로스터. free가 기본값. 유료 slug는 openrouter list-models로 실재 확인 완료(2026-07-15). 값이 바뀌면 mcp openrouter list-models로 재확인 후 갱신. free_slug는 openrouter/free(공식 free 라우터, 살아있는 무료 모델 자동 선택) 사용 — 특정 free 모델(예: qwen/qwen3-coder:free)이 개별적으로 무응답(hang)에 빠지는 문제를 피하기 위함(2026-07-15 실측: qwen 무응답 확인, openrouter/free는 정상).",
+  "default": "free",
+  "free_slug": "openrouter/free",
+  "models": {
+    "free": {
+      "slug": "openrouter/free",
+      "tier": "free",
+      "note": "기본, 비용 없음, 자동 라우팅(검증됨)"
+    },
+    "flash-lite": {
+      "slug": "google/gemini-3.1-flash-lite",
+      "tier": "paid",
+      "note": "초저가 범용/채팅"
+    },
+    "deepseek-flash": {
+      "slug": "deepseek/deepseek-v4-flash",
+      "tier": "paid",
+      "note": "최저가 코딩, 오토스케일 light"
+    },
+    "deepseek": {
+      "slug": "deepseek/deepseek-v4-pro",
+      "tier": "paid",
+      "note": "저가 코딩"
+    },
+    "glm": {
+      "slug": "z-ai/glm-5.2",
+      "tier": "paid",
+      "note": "저가 코딩/에이전트, 오토스케일 mid"
+    },
+    "gemini": {
+      "slug": "google/gemini-3.5-flash",
+      "tier": "paid",
+      "note": "엑셀/오피스 권장"
+    },
+    "sonnet": {
+      "slug": "anthropic/claude-sonnet-5",
+      "tier": "paid",
+      "note": "균형(권장 유료)"
+    },
+    "luna": {
+      "slug": "openai/gpt-5.6-luna",
+      "tier": "paid",
+      "note": "저가 추론"
+    },
+    "terra": {
+      "slug": "openai/gpt-5.6-terra",
+      "tier": "paid",
+      "note": "오토스케일 추론 상한"
+    },
+    "opus": {
+      "slug": "anthropic/claude-opus-4.8",
+      "tier": "paid",
+      "note": "최고 성능, 고가",
+      "manual_only": true
+    },
+    "sol": {
+      "slug": "openai/gpt-5.6-sol",
+      "tier": "paid",
+      "note": "최고 코딩 성능, 고가",
+      "manual_only": true
+    }
+  },
+  "autoscale": {
+    "_comment": "route.classify() 티어 → ladder alias. free 티어는 다시 trivial(FREE_KW 명시 매치, 진짜 $0)과 light(그 외 free 판정, 저가 유료로 안전하게)로 나뉜다 — cn_run.py의 autoscale_pick() 참고. ceiling은 오토스케일이 절대 넘지 않는 상한(Terra) — manual_only 모델은 오토스케일 대상에서 원천 제외.",
+    "trivial": "free",
+    "light": "deepseek-flash",
+    "mid": "glm",
+    "reason": "terra",
+    "ceiling": "terra"
+  },
+  "roles": {
+    "_comment": "model-picker 스킬 및 수동 추천이 참조하는 역할별 기본 alias.",
+    "excel": "gemini",
+    "office": "gemini",
+    "coding_simple": "deepseek-flash",
+    "coding_mid": "glm",
+    "coding_hard": "terra",
+    "general": "flash-lite",
+    "reasoning": "terra"
+  }
+}
