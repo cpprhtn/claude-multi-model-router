@@ -15,6 +15,10 @@
 
 3~5번(프로젝트 로컬 파일)은 가역적이고 이 프로젝트 스코프라 확인 없이 바로 진행해도 된다. 2번(전역 npm)과 6번(전역 settings.json)은 이 프로젝트 밖에도 영향을 주므로 진행 전 한 줄 확인을 받는다.
 
+### full vs lite
+
+OpenRouter API 키 발급이 부담이거나 회사 정책상 외부 API 호출이 금지된 사용자는 **lite**로 설치한다 — 별도 설치 절차나 플래그가 없다. 위 표에서 **2·3번(cn 설치, OPENROUTER_API_KEY)을 건너뛰면 그 자체로 lite**다. SKILL.md 티어 판정표는 `route.py`/`cn_run.py`가 없으면 항상 OFF 열(Claude 모델끼리만 스케일링)로 처리하도록 이미 짜여 있으므로, 두 스크립트나 `.env`가 없어도 에러 없이 동작한다 — Claude가 호출 전에 파일 존재를 먼저 확인하기 때문이다. 나중에 마음이 바뀌면 2·3번을 그때 채워 넣기만 하면 full로 전환된다(역방향도 마찬가지 — 단순히 안 쓰면 됨).
+
 ## 1. ~/.claude/settings.json
 
 ```json
@@ -28,15 +32,16 @@
 - `opusplan`: 플랜 모드 = Opus, 실행 = Sonnet. 플랜 모드 밖에서는 항상 Sonnet(자잘한 작업의 기본 절약 경로).
 - `acceptEdits`: 실행 단계 편집 자동 수락. 늘어나는 승인은 플랜 종료 시 "계획 승인" 1회뿐이며, 그 승인이 Opus→Sonnet 전환 스위치다.
 - `effortLevel: medium`: 매 턴 thinking 토큰 절감(가장 큰 레버). 어려운 문제는 그 턴 프롬프트에 `ultrathink`를 넣어 일시적으로 깊게.
+- **Opus 접근이 없는 요금제(Pro 등)**: `opusplan`을 설정해도 Opus 미보유 요금제에서는 플랜 모드가 자연히 Sonnet으로 강등된다 — 별도 조치 불요, SKILL.md 티어 판정표의 "설계·원인분석" 행도 그대로 적용하면 된다.
+- **API 종량제(Max 구독이 아닌 API 키 직접 과금) 사용자**: 서브에이전트·모델 선택의 경제성 계산이 달라진다. Max 구독은 정액이라 "메인 컨텍스트 보호"가 절약의 핵심이지만(SKILL.md 비용 원칙 #2), 종량제는 Haiku 서브에이전트로 내리는 것 자체가 토큰 단가 차이만큼 실비 절감이 된다 — 더 적극적으로 하위 티어를 선택해도 손해가 아니다.
 
-## 2. CLAUDE.md 라우팅 앵커 (필수)
+## 2. CLAUDE.md 라우팅 앵커 (필수, 최대 2줄)
 
-프로젝트 CLAUDE.md(또는 ~/.claude/CLAUDE.md)에 추가 — 이게 없으면 스킬 발동이 키워드 운에 좌우된다. 이미 진행 중인 프로젝트의 CLAUDE.md일 수 있으니 덮어쓰지 말고 끝에 추가할 것(§0 참고):
+프로젝트 CLAUDE.md(또는 ~/.claude/CLAUDE.md)에 추가 — 이게 없으면 스킬 발동이 키워드 운에 좌우된다. 이미 진행 중인 프로젝트의 CLAUDE.md일 수 있으니 덮어쓰지 말고 끝에 추가할 것(§0 참고). 앵커는 매 턴 상주 비용이므로 아래 2줄을 넘기지 않는다 — 세부 규칙(OpenRouter 기본 꺼짐 등)은 CLAUDE.md가 아니라 SKILL.md 쪽에 이미 있으므로 여기서 반복하지 않는다:
 
 ```markdown
 ## 라우팅 (필수)
-모든 개발 작업은 claude-multi-model-router 스킬의 티어 판정을 먼저 적용.
-굵직한 요청은 플랜 모드로 시작. OpenRouter 위임(route.py/cn_run.py 둘 다)은 기본 꺼짐 — 사용자가 명시적으로 켜기 전까지는 free 텍스트 생성도 단순·기계적 편집도 Claude 모델(Sonnet/Haiku) 안에서만 처리.
+모든 개발 작업은 claude-multi-model-router 스킬의 티어 판정을 먼저 적용. 굵직한 요청은 플랜 모드로.
 ```
 
 ## 3. VS Code 확장 주의
@@ -89,6 +94,7 @@ OpenRouter 위임은 기본 꺼짐이고, `route.py`(텍스트 생성)와 `cn_ru
 
 ## 7. 기타
 
-- `cn_active_model.txt`, `cn_autoscale.txt`, `_oneoff.config.yaml` — 스킬 디렉터리의 `.gitignore`에 포함됨(sticky 모델 상태·오토스케일 on/off 상태·유료 1회 임시 config, 커밋 금지).
+- sticky/autoscale 상태는 프로젝트 루트 `.claude/.cmr-state.json`에 저장된다(스킬 폴더가 아니라 **프로젝트 루트** — degit 재설치로 유실되지 않도록). 루트 `.gitignore`에 `.claude/.cmr-state.json` 포함 확인(§0/§4와 같은 흐름으로 추가). 구버전(스킬 폴더 내부 `cn_active_model.txt`/`cn_autoscale.txt`)이 있으면 route.py가 첫 실행 시 이 파일로 1회 자동 마이그레이션하고 구파일은 지운다.
+- `_oneoff.config.yaml` — 스킬 디렉터리의 `.gitignore`에 포함됨(유료 1회 임시 config, 커밋 금지).
 - cn_models.json은 cn 위임용 로스터(free/paid) — `autoscale`/`roles` 블록도 여기 있음.
 - 유료 모델을 역할별로 쉽게 고르고 싶으면 `model-picker` 스킬(별도 스킬 폴더)을 쓴다. cn_run.py의 `--autoscale on|off`/`--set-model`을 대화형으로 감싼 것.
