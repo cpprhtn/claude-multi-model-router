@@ -19,7 +19,7 @@ opusplan을 몰라도 상관없습니다 — 이 스킬을 얹는 순간 그 아
 
 ## 티어 구조
 
-기본값은 **Claude 모델끼리만 스케일링**합니다 — OpenRouter는 `route.py`(텍스트 생성)든 `cn_run.py`(파일 편집)든 명시적으로 켜기 전까지 절대 자동으로 개입하지 않습니다(둘은 같은 스위치를 공유). 굵직한 설계는 플랜 모드(Opus), 짧은 코드/질의는 메인 세션(Sonnet), 파일 수정과 탐색·요약은 각각 서브에이전트가 처리하는 게 기본이고, OpenRouter를 켜면 같은 4개 작업이 Claude가 이미 판정한 티어(`trivial`~`reason`)에 따라 free~유료 OpenRouter 모델로 자동 위임됩니다.
+기본값은 **Claude 모델끼리만 스케일링**합니다 — OpenRouter는 `route.py`(텍스트 생성)든 `cn_run.py`(파일 편집)든 명시적으로 켜기 전까지 절대 자동으로 개입하지 않습니다(둘은 같은 스위치를 공유). 굵직한 설계는 플랜 모드(Opus), 짧은 코드/질의는 메인 세션(Sonnet), 파일 수정과 탐색·요약은 각각 서브에이전트가 처리하는 게 기본이고, OpenRouter를 켜면 같은 4개 작업이 Claude가 이미 판정한 티어(`trivial`, `reason`)에 따라 free~유료 OpenRouter 모델로 자동 위임됩니다.
 
 전체 판정표(OFF/ON 각 열의 정확한 실행처)는 SKILL.md가 원본입니다 — README에 별도 표를 두면 둘이 따로 놀 위험이 있어 여기서는 링크만 둡니다: [`.claude/skills/claude-multi-model-router/SKILL.md`](.claude/skills/claude-multi-model-router/SKILL.md).
 
